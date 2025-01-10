@@ -242,14 +242,54 @@ async def list_my_playlists(yt):
     print("\n=== My YouTube Playlists ===")
     playlists = await yt.get_my_playlists()
     
-    if playlists:
-        print("\nYour playlists (newest first):")
-        for idx, playlist in enumerate(playlists, 1):
-            print(f"{idx}. {playlist['title']}")
-            print(f"   ID: {playlist['id']}")
-            print(f"   Videos: {playlist['video_count']}\n")
-    else:
+    if not playlists:
         print("No playlists found or error occurred.")
+        return
+        
+    print("\nYour playlists (newest first):")
+    for idx, playlist in enumerate(playlists, 1):
+        print(f"{idx}. {playlist['title']}")
+        print(f"   ID: {playlist['id']}")
+        print(f"   Videos: {playlist['video_count']}\n")
+    
+    cleanup = await prompt_user('\nWould you like to delete any playlists? Enter numbers (e.g., "1,3-5,7" or press Enter to skip): ')
+    
+    if cleanup.strip():
+        try:
+            # Parse the range string (reusing existing parse_range function)
+            to_delete = await parse_range(cleanup.replace(',', ';'))
+            
+            # Validate indices
+            valid_indices = [i for i in to_delete if 1 <= i <= len(playlists)]
+            
+            if not valid_indices:
+                print("No valid playlist numbers entered.")
+                return
+                
+            # Show confirmation with playlist names
+            print("\nYou're about to delete these playlists:")
+            for idx in valid_indices:
+                print(f"- {playlists[idx-1]['title']}")
+                
+            confirm = await prompt_user('\nAre you sure? This cannot be undone! (yes/no): ')
+            
+            if confirm.lower() == 'yes':
+                deleted = 0
+                for idx in valid_indices:
+                    playlist = playlists[idx-1]
+                    try:
+                        await yt.delete_playlist(playlist['id'])
+                        print(f"Deleted: {playlist['title']}")
+                        deleted += 1
+                    except Exception as e:
+                        print(f"Error deleting {playlist['title']}: {e}")
+                
+                print(f"\nSuccessfully deleted {deleted} playlist(s)")
+            else:
+                print("Operation cancelled.")
+                
+        except ValueError as e:
+            print(f"Error parsing numbers: {e}")
 
 async def main():
     yt = YouTubeTools()

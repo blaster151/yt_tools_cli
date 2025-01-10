@@ -193,3 +193,15 @@ class YouTubeTools:
         except Exception as e:
             print(f"Error fetching playlists: {e}")
             return None
+
+    async def delete_playlist(self, playlist_id):
+        """Deletes a playlist owned by the authenticated user."""
+        try:
+            request = self.youtube.playlists().delete(
+                id=playlist_id
+            )
+            request.execute()
+            return True
+        except Exception as e:
+            print(f"Error deleting playlist: {e}")
+            return False
