@@ -252,44 +252,173 @@ async def list_my_playlists(yt):
         print(f"   ID: {playlist['id']}")
         print(f"   Videos: {playlist['video_count']}\n")
     
-    cleanup = await prompt_user('\nWould you like to delete any playlists? Enter numbers (e.g., "1,3-5,7" or press Enter to skip): ')
+    while True:
+        print("\nOptions:")
+        print("1. Delete playlists")
+        print("2. Merge playlists")
+        print("3. View/edit playlist contents")
+        print("4. Return to main menu")
+        
+        choice = await prompt_user("\nEnter your choice (1-4): ")
+        
+        if choice == '1':
+            await delete_playlists(yt, playlists)
+        elif choice == '2':
+            await merge_playlists(yt, playlists)
+        elif choice == '3':
+            await view_edit_playlist(yt, playlists)
+        elif choice == '4':
+            break
+        else:
+            print("Invalid choice. Please try again.")
+
+async def delete_playlists(yt, playlists):
+    cleanup = await prompt_user('\nEnter playlist numbers to delete (e.g., "1,3-5,7" or press Enter to cancel): ')
     
-    if cleanup.strip():
-        try:
-            # Parse the range string (reusing existing parse_range function)
-            to_delete = await parse_range(cleanup.replace(',', ';'))
+    if not cleanup.strip():
+        return
+        
+    try:
+        to_delete = await parse_range(cleanup.replace(',', ';'))
+        valid_indices = [i for i in to_delete if 1 <= i <= len(playlists)]
+        
+        if not valid_indices:
+            print("No valid playlist numbers entered.")
+            return
             
-            # Validate indices
-            valid_indices = [i for i in to_delete if 1 <= i <= len(playlists)]
+        print("\nYou're about to delete these playlists:")
+        for idx in valid_indices:
+            print(f"- {playlists[idx-1]['title']}")
             
-            if not valid_indices:
-                print("No valid playlist numbers entered.")
+        confirm = await prompt_user('\nAre you sure? This cannot be undone! (yes/no): ')
+        
+        if confirm.lower() == 'yes':
+            deleted = 0
+            for idx in valid_indices:
+                playlist = playlists[idx-1]
+                try:
+                    await yt.delete_playlist(playlist['id'])
+                    print(f"Deleted: {playlist['title']}")
+                    deleted += 1
+                except Exception as e:
+                    print(f"Error deleting {playlist['title']}: {e}")
+            
+            print(f"\nSuccessfully deleted {deleted} playlist(s)")
+        else:
+            print("Operation cancelled.")
+            
+    except ValueError as e:
+        print(f"Error parsing numbers: {e}")
+
+async def merge_playlists(yt, playlists):
+    print("\nEnter the numbers of the playlists to merge (in desired order)")
+    indices = await prompt_user('Playlist numbers (e.g., "1,3"): ')
+    
+    try:
+        to_merge = [int(idx.strip()) for idx in indices.split(',')]
+        valid_indices = [i for i in to_merge if 1 <= i <= len(playlists)]
+        
+        if len(valid_indices) < 2:
+            print("Please select at least 2 valid playlist numbers.")
+            return
+            
+        print("\nMerging these playlists (in this order):")
+        for idx in valid_indices:
+            print(f"- {playlists[idx-1]['title']}")
+            
+        new_title = await prompt_user('\nEnter name for the merged playlist: ')
+        if not new_title.strip():
+            print("Operation cancelled: playlist name cannot be empty")
+            return
+            
+        confirm = await prompt_user('\nThis will create a new playlist and delete the originals. Continue? (yes/no): ')
+        
+        if confirm.lower() == 'yes':
+            # Create new playlist
+            new_playlist_id = await yt.create_playlist(new_title)
+            if not new_playlist_id:
+                print("Failed to create new playlist")
                 return
                 
-            # Show confirmation with playlist names
-            print("\nYou're about to delete these playlists:")
+            total_added = 0
+            # Copy videos in order
             for idx in valid_indices:
-                print(f"- {playlists[idx-1]['title']}")
+                source_playlist = playlists[idx-1]
+                items = await yt.get_playlist_items(source_playlist['id'])
+                print(f"\nCopying from: {source_playlist['title']}")
                 
-            confirm = await prompt_user('\nAre you sure? This cannot be undone! (yes/no): ')
+                for item in items:
+                    video_id = item['snippet']['resourceId']['videoId']
+                    await yt.add_video_to_playlist(new_playlist_id, video_id)
+                    print(f"Added: {item['snippet']['title']}")
+                    total_added += 1
+            
+            # Delete original playlists
+            for idx in valid_indices:
+                playlist = playlists[idx-1]
+                await yt.delete_playlist(playlist['id'])
+                print(f"Deleted original playlist: {playlist['title']}")
+                
+            print(f"\nSuccess! Created new playlist '{new_title}' with {total_added} videos")
+        else:
+            print("Operation cancelled.")
+            
+    except ValueError as e:
+        print(f"Error parsing numbers: {e}")
+
+async def view_edit_playlist(yt, playlists):
+    playlist_num = await prompt_user('\nEnter playlist number to view/edit: ')
+    try:
+        idx = int(playlist_num) - 1
+        if not (0 <= idx < len(playlists)):
+            print("Invalid playlist number")
+            return
+            
+        playlist = playlists[idx]
+        print(f"\nViewing playlist: {playlist['title']}")
+        
+        items = await yt.get_playlist_items(playlist['id'])
+        if not items:
+            print("Playlist is empty or error occurred")
+            return
+            
+        print("\nVideos in playlist:")
+        for idx, item in enumerate(items, 1):
+            print(f"{idx}. {item['snippet']['title']}")
+            
+        remove = await prompt_user('\nEnter video numbers to remove (e.g., "1,3-5,7" or press Enter to cancel): ')
+        
+        if remove.strip():
+            to_remove = await parse_range(remove.replace(',', ';'))
+            valid_indices = [i for i in to_remove if 1 <= i <= len(items)]
+            
+            if not valid_indices:
+                print("No valid video numbers entered.")
+                return
+                
+            print("\nYou're about to remove these videos:")
+            for idx in valid_indices:
+                print(f"- {items[idx-1]['snippet']['title']}")
+                
+            confirm = await prompt_user('\nAre you sure? (yes/no): ')
             
             if confirm.lower() == 'yes':
-                deleted = 0
-                for idx in valid_indices:
-                    playlist = playlists[idx-1]
+                removed = 0
+                for idx in sorted(valid_indices, reverse=True):  # Remove from end to avoid index shifting
+                    item = items[idx-1]
                     try:
-                        await yt.delete_playlist(playlist['id'])
-                        print(f"Deleted: {playlist['title']}")
-                        deleted += 1
+                        await yt.remove_video_from_playlist(item['id'])  # Note: this is the playlistItem ID
+                        print(f"Removed: {item['snippet']['title']}")
+                        removed += 1
                     except Exception as e:
-                        print(f"Error deleting {playlist['title']}: {e}")
+                        print(f"Error removing video: {e}")
                 
-                print(f"\nSuccessfully deleted {deleted} playlist(s)")
+                print(f"\nSuccessfully removed {removed} video(s)")
             else:
                 print("Operation cancelled.")
                 
-        except ValueError as e:
-            print(f"Error parsing numbers: {e}")
+    except ValueError as e:
+        print(f"Error parsing numbers: {e}")
 
 async def main():
     yt = YouTubeTools()

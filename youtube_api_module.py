@@ -205,3 +205,33 @@ class YouTubeTools:
         except Exception as e:
             print(f"Error deleting playlist: {e}")
             return False
+
+    async def create_playlist(self, title, description=""):
+        """Creates a new playlist and returns its ID."""
+        try:
+            request = self.youtube.playlists().insert(
+                part="snippet",
+                body={
+                    "snippet": {
+                        "title": title,
+                        "description": description
+                    }
+                }
+            )
+            response = request.execute()
+            return response['id']
+        except Exception as e:
+            print(f"Error creating playlist: {e}")
+            return None
+
+    async def remove_video_from_playlist(self, playlist_item_id):
+        """Removes a video from a playlist using the playlist item ID."""
+        try:
+            request = self.youtube.playlistItems().delete(
+                id=playlist_item_id
+            )
+            request.execute()
+            return True
+        except Exception as e:
+            print(f"Error removing video: {e}")
+            return False
