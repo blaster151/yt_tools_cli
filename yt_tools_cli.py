@@ -238,6 +238,19 @@ def extract_video_id(url_or_id):
         return url_or_id.split('?si=')[0]
     return url_or_id
 
+async def list_my_playlists(yt):
+    print("\n=== My YouTube Playlists ===")
+    playlists = await yt.get_my_playlists()
+    
+    if playlists:
+        print("\nYour playlists (newest first):")
+        for idx, playlist in enumerate(playlists, 1):
+            print(f"{idx}. {playlist['title']}")
+            print(f"   ID: {playlist['id']}")
+            print(f"   Videos: {playlist['video_count']}\n")
+    else:
+        print("No playlists found or error occurred.")
+
 async def main():
     yt = YouTubeTools()
     
@@ -245,15 +258,18 @@ async def main():
         print("\n=== YouTube Tools ===")
         print("1. Combine Playlists")
         print("2. Download Playlist")
-        print("3. Exit")
+        print("3. List My Playlists")
+        print("4. Exit")
         
-        choice = await prompt_user("\nEnter your choice (1-3): ")
+        choice = await prompt_user("\nEnter your choice (1-4): ")
         
         if choice == '1':
             await combine_playlists(yt)
         elif choice == '2':
             await download_playlist(yt)
         elif choice == '3':
+            await list_my_playlists(yt)
+        elif choice == '4':
             print("Goodbye!")
             break
         else:

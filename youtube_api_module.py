@@ -157,3 +157,39 @@ class YouTubeTools:
         except Exception as e:
             print(f"Error fetching video details: {e}")
             return None
+
+    async def get_my_playlists(self):
+        """Fetches all playlists owned by the authenticated user, sorted by most recent first."""
+        playlists = []
+        next_page_token = None
+        
+        try:
+            while True:
+                # Fetch batch of playlists (max 50 per request)
+                request = self.youtube.playlists().list(
+                    part='snippet,contentDetails',
+                    mine=True,
+                    maxResults=50,
+                    pageToken=next_page_token
+                )
+                response = request.execute()
+                
+                for playlist in response['items']:
+                    playlists.append({
+                        'id': playlist['id'],
+                        'title': playlist['snippet']['title'],
+                        'video_count': playlist['contentDetails']['itemCount'],
+                        'created_at': playlist['snippet']['publishedAt']
+                    })
+                
+                next_page_token = response.get('nextPageToken')
+                if not next_page_token:
+                    break
+            
+            # Sort by creation date, newest first
+            playlists.sort(key=lambda x: x['created_at'], reverse=True)
+            return playlists
+            
+        except Exception as e:
+            print(f"Error fetching playlists: {e}")
+            return None
