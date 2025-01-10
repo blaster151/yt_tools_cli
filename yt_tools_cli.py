@@ -386,36 +386,131 @@ async def view_edit_playlist(yt, playlists):
         for idx, item in enumerate(items, 1):
             print(f"{idx}. {item['snippet']['title']}")
             
-        remove = await prompt_user('\nEnter video numbers to remove (e.g., "1,3-5,7" or press Enter to cancel): ')
+        print("\nOptions:")
+        print("1. Remove videos")
+        print("2. Reverse playlist order")
+        print("3. Return to playlist menu")
         
-        if remove.strip():
-            to_remove = await parse_range(remove.replace(',', ';'))
-            valid_indices = [i for i in to_remove if 1 <= i <= len(items)]
+        choice = await prompt_user("\nEnter your choice (1-3): ")
+        
+        if choice == '1':
+            # Existing remove functionality
+            remove = await prompt_user('\nEnter video numbers to remove (e.g., "1,3-5,7" or press Enter to cancel): ')
             
-            if not valid_indices:
-                print("No valid video numbers entered.")
-                return
+            if remove.strip():
+                to_remove = await parse_range(remove.replace(',', ';'))
+                valid_indices = [i for i in to_remove if 1 <= i <= len(items)]
                 
-            print("\nYou're about to remove these videos:")
-            for idx in valid_indices:
-                print(f"- {items[idx-1]['snippet']['title']}")
+                if not valid_indices:
+                    print("No valid video numbers entered.")
+                    return
+                    
+                print("\nYou're about to remove these videos:")
+                for idx in valid_indices:
+                    print(f"- {items[idx-1]['snippet']['title']}")
+                    
+                confirm = await prompt_user('\nAre you sure? (yes/no): ')
                 
-            confirm = await prompt_user('\nAre you sure? (yes/no): ')
+                if confirm.lower() == 'yes':
+                    removed = 0
+                    for idx in sorted(valid_indices, reverse=True):  # Remove from end to avoid index shifting
+                        item = items[idx-1]
+                        try:
+                            await yt.remove_video_from_playlist(item['id'])  # Note: this is the playlistItem ID
+                            print(f"Removed: {item['snippet']['title']}")
+                            removed += 1
+                        except Exception as e:
+                            print(f"Error removing video: {e}")
+                    
+                    print(f"\nSuccessfully removed {removed} video(s)")
+                else:
+                    print("Operation cancelled.")
+                    
+        elif choice == '2':
+            # New reverse functionality
+            confirm = await prompt_user('\nReverse the order of all videos in this playlist? (yes/no): ')
             
             if confirm.lower() == 'yes':
-                removed = 0
-                for idx in sorted(valid_indices, reverse=True):  # Remove from end to avoid index shifting
-                    item = items[idx-1]
+                # First, scan for private/deleted videos
+                private_count = 0
+                print("\nScanning for private/deleted videos...")
+                for item in items:
+                    video_id = item['snippet']['resourceId']['videoId']
                     try:
-                        await yt.remove_video_from_playlist(item['id'])  # Note: this is the playlistItem ID
-                        print(f"Removed: {item['snippet']['title']}")
+                        details = await yt.get_video_details(video_id)
+                        if not details:
+                            private_count += 1
+                    except Exception:
+                        private_count += 1
+                
+                if private_count > 0:
+                    print(f"\nWarning: Found {private_count} private/deleted videos in the playlist.")
+                    print("These videos will be removed during the reversal process.")
+                    keep_going = await prompt_user('Continue anyway? (yes/no): ')
+                    if keep_going.lower() != 'yes':
+                        print("Operation cancelled.")
+                        return
+                
+                print("\nReversing playlist order...")
+                # Create a new playlist temporarily
+                temp_title = f"TEMP_{playlist['title']}"
+                temp_playlist_id = await yt.create_playlist(temp_title)
+                
+                if not temp_playlist_id:
+                    print("Failed to create temporary playlist")
+                    return
+                
+                # Add videos in reverse order
+                added = skipped = 0
+                total = len(items)
+                for item in reversed(items):
+                    video_id = item['snippet']['resourceId']['videoId']
+                    try:
+                        await yt.add_video_to_playlist(temp_playlist_id, video_id)
+                        added += 1
+                    except Exception as e:
+                        print(f"\nSkipped video (likely private/deleted): {item['snippet']['title']}")
+                        skipped += 1
+                    print(f"Progress: {added + skipped}/{total} videos (Skipped: {skipped})", end='\r')
+                
+                print("\n\nRemoving videos from original playlist...")
+                # Remove all videos from original playlist
+                removed = 0
+                for item in items:
+                    try:
+                        await yt.remove_video_from_playlist(item['id'])
                         removed += 1
                     except Exception as e:
-                        print(f"Error removing video: {e}")
+                        print(f"\nCouldn't remove video: {item['snippet']['title']}")
+                    print(f"Progress: {removed}/{total} videos removed", end='\r')
                 
-                print(f"\nSuccessfully removed {removed} video(s)")
+                print("\n\nRestoring videos in new order...")
+                # Copy back from temp playlist in new order
+                restored = 0
+                temp_items = await yt.get_playlist_items(temp_playlist_id)
+                for item in temp_items:
+                    video_id = item['snippet']['resourceId']['videoId']
+                    try:
+                        await yt.add_video_to_playlist(playlist['id'], video_id)
+                        restored += 1
+                    except Exception as e:
+                        print(f"\nCouldn't restore video: {item['snippet']['title']}")
+                    print(f"Progress: {restored}/{added} videos restored", end='\r')
+                
+                # Delete temporary playlist
+                await yt.delete_playlist(temp_playlist_id)
+                
+                print(f"\n\nFinished!")
+                print(f"Successfully reversed {restored} videos")
+                if skipped > 0:
+                    print(f"Skipped {skipped} private/deleted videos")
             else:
                 print("Operation cancelled.")
+                
+        elif choice == '3':
+            return
+        else:
+            print("Invalid choice.")
                 
     except ValueError as e:
         print(f"Error parsing numbers: {e}")
