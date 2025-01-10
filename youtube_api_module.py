@@ -235,3 +235,112 @@ class YouTubeTools:
         except Exception as e:
             print(f"Error removing video: {e}")
             return False
+
+    def _parse_duration_filter(self, filter_str):
+        """Parse duration filter string into min/max minutes."""
+        if not filter_str:
+            return None, None
+        
+        # Handle hyphen format (e.g., "60-120")
+        if '-' in filter_str and ' ' not in filter_str:
+            try:
+                min_duration, max_duration = map(int, filter_str.split('-'))
+                return min_duration, max_duration
+            except ValueError:
+                pass
+            
+        # Handle original format (e.g., ">=60 <=120")
+        parts = filter_str.split()
+        min_duration = max_duration = None
+        
+        for part in parts:
+            if part.startswith('>='):
+                min_duration = int(part[2:])
+            elif part.startswith('<='):
+                max_duration = int(part[2:])
+            
+        return min_duration, max_duration
+
+    def _parse_iso_duration(self, duration):
+        """Convert YouTube's ISO 8601 duration to minutes."""
+        import re
+        import isodate
+        
+        return int(isodate.parse_duration(duration).total_seconds() / 60)
+
+    async def advanced_search(self, query, resource_type=None, order='relevance',
+                            channel_id=None, published_after=None, published_before=None,
+                            duration_filter=None, max_results=50):
+        """Performs an advanced YouTube search with multiple filters."""
+        try:
+            min_duration, max_duration = self._parse_duration_filter(duration_filter)
+            
+            # Initial search with maximum results since we'll filter some out
+            params = {
+                'q': query,
+                'maxResults': max(50, max_results * 2),  # Request extra results to account for duration filtering
+                'type': resource_type,
+                'order': order,
+                'part': 'snippet'
+            }
+            
+            if channel_id:
+                params['channelId'] = channel_id
+            
+            if published_after:
+                params['publishedAfter'] = f"{published_after}T00:00:00Z"
+            
+            if published_before:
+                params['publishedBefore'] = f"{published_before}T23:59:59Z"
+            
+            # Execute search
+            request = self.youtube.search().list(**params)
+            response = request.execute()
+            
+            results = []
+            for item in response.get('items', []):
+                result = {
+                    'id': item['id'].get('videoId') or item['id'].get('playlistId') or item['id'].get('channelId'),
+                    'type': item['id']['kind'].split('#')[1],
+                    'title': item['snippet']['title'],
+                    'channel_title': item['snippet']['channelTitle'],
+                    'published_at': item['snippet']['publishedAt']
+                }
+                
+                # Get additional details based on type
+                if result['type'] == 'video':
+                    video_response = self.youtube.videos().list(
+                        part='contentDetails,statistics',
+                        id=result['id']
+                    ).execute()
+                    
+                    if video_response['items']:
+                        stats = video_response['items'][0]
+                        duration_str = stats['contentDetails']['duration']
+                        duration_minutes = self._parse_iso_duration(duration_str)
+                        
+                        # Apply duration filter
+                        if min_duration and duration_minutes < min_duration:
+                            continue
+                        if max_duration and duration_minutes > max_duration:
+                            continue
+                            
+                        result.update({
+                            'duration': f"{duration_minutes} minutes",
+                            'duration_minutes': duration_minutes,
+                            'view_count': int(stats['statistics'].get('viewCount', 0))
+                        })
+                        results.append(result)
+                        
+                elif result['type'] in ['playlist', 'channel']:
+                    # ... (existing playlist/channel handling) ...
+                    results.append(result)
+                    
+                if len(results) >= max_results:
+                    break
+                
+            return results
+            
+        except Exception as e:
+            print(f"Error in advanced search: {e}")
+            return None

@@ -515,6 +515,99 @@ async def view_edit_playlist(yt, playlists):
     except ValueError as e:
         print(f"Error parsing numbers: {e}")
 
+async def advanced_search(yt):
+    print("\n=== Advanced YouTube Search ===")
+    
+    # Get search parameters
+    query = await prompt_user("Enter search terms: ")
+    
+    print("\nFilter options:")
+    print("1. Videos only")
+    print("2. Live streams only")
+    print("3. Playlists only")
+    print("4. Channels only")
+    print("5. No filter")
+    
+    type_choice = await prompt_user("Choose filter (1-5): ")
+    type_map = {
+        '1': 'video',
+        '2': 'live',
+        '3': 'playlist',
+        '4': 'channel'
+    }
+    resource_type = type_map.get(type_choice, None)
+    
+    duration_filter = None
+    if resource_type == 'video':
+        print("\nDuration filter examples:")
+        print("60-120      (between 1-2 hours)")
+        print("5-10        (between 5-10 minutes)")
+        print("   - OR -")
+        print(">=60 <=120  (same as 60-120)")
+        print(">=30        (30 minutes or longer)")
+        print("<=15        (15 minutes or shorter)")
+        duration_filter = await prompt_user("\nEnter duration filter (or press Enter to skip): ")
+
+    print("\nSort by:")
+    print("1. Relevance (default)")
+    print("2. Date (newest first)")
+    print("3. View count")
+    print("4. Rating")
+    
+    order = await prompt_user("Choose sort order (1-4): ")
+    order_map = {
+        '2': 'date',
+        '3': 'viewCount',
+        '4': 'rating'
+    }
+    sort_order = order_map.get(order, 'relevance')
+    
+    # Optional filters
+    print("\nAdditional filters (press Enter to skip):")
+    
+    channel_name = await prompt_user("Filter by channel name: ")
+    channel_id = None
+    if channel_name:
+        channel_id = await get_channel_id_from_username(yt, channel_name)
+    
+    published_after = await prompt_user("Published after (YYYY-MM-DD): ")
+    published_before = await prompt_user("Published before (YYYY-MM-DD): ")
+    
+    try:
+        results = await yt.advanced_search(
+            query=query,
+            resource_type=resource_type,
+            order=sort_order,
+            channel_id=channel_id,
+            published_after=published_after,
+            published_before=published_before,
+            duration_filter=duration_filter,
+            max_results=50
+        )
+        
+        if not results:
+            print("\nNo results found.")
+            return
+            
+        print(f"\nFound {len(results)} results:")
+        for idx, item in enumerate(results, 1):
+            if item['type'] == 'video':
+                print(f"\n{idx}. [VIDEO] {item['title']}")
+                print(f"   Duration: {item['duration']}")
+                print(f"   Views: {item['view_count']:,}")
+                print(f"   Channel: {item['channel_title']}")
+                print(f"   Published: {item['published_at']}")
+                print(f"   ID: {item['id']}")
+            elif item['type'] == 'playlist':
+                print(f"\n{idx}. [PLAYLIST] {item['title']}")
+                print(f"   Channel: {item['channel_title']}")
+                print(f"   ID: {item['id']}")
+            elif item['type'] == 'channel':
+                print(f"\n{idx}. [CHANNEL] {item['title']}")
+                print(f"   ID: {item['id']}")
+    except Exception as e:
+        print(f"Error performing search: {e}")
+
 async def main():
     yt = YouTubeTools()
     
@@ -523,9 +616,10 @@ async def main():
         print("1. Combine Playlists")
         print("2. Download Playlist")
         print("3. List My Playlists")
-        print("4. Exit")
+        print("4. Advanced Search")
+        print("5. Exit")
         
-        choice = await prompt_user("\nEnter your choice (1-4): ")
+        choice = await prompt_user("\nEnter your choice (1-5): ")
         
         if choice == '1':
             await combine_playlists(yt)
@@ -534,6 +628,8 @@ async def main():
         elif choice == '3':
             await list_my_playlists(yt)
         elif choice == '4':
+            await advanced_search(yt)
+        elif choice == '5':
             print("Goodbye!")
             break
         else:
