@@ -1,0 +1,5 @@
+token.json           # OAuth credentials
+credentials.json     # YouTube API credentials
+__pycache__/
+*.pyc
+.env
