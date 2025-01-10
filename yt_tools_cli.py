@@ -515,11 +515,35 @@ async def view_edit_playlist(yt, playlists):
     except ValueError as e:
         print(f"Error parsing numbers: {e}")
 
+async def show_quota_status(yt):
+    status = yt.get_quota_status()
+    print("\n=== YouTube API Quota Status (Current Session) ===")
+    print(f"Used in this session: {status['used']} points")
+    print(f"Remaining: {status['remaining']} points")
+    print(f"Total daily limit: {status['total']} points")
+    print(f"Session usage: {status['percent_used']:.1f}%")
+    print("\nNote: Quota tracking resets when you restart the application")
+    print("The actual daily quota is managed by YouTube across all sessions")
+
 async def advanced_search(yt):
     print("\n=== Advanced YouTube Search ===")
     
-    # Get search parameters
-    query = await prompt_user("Enter search terms: ")
+    # Show current quota status
+    status = yt.get_quota_status()
+    print(f"\nQuota used in this session: {status['used']}/{status['total']} points ({status['percent_used']:.1f}%)")
+    print("(Note: Session quota resets on application restart)")
+    
+    # Make light mode choice more prominent
+    print("\nSearch mode:")
+    print("1. Full search (includes video durations, view counts, playlist details)")
+    print("   Uses ~150-300 quota points")
+    print("2. Light search (basic info only)")
+    print("   Uses ~100 quota points")
+    
+    mode = await prompt_user("\nChoose mode (1-2): ")
+    light_mode = mode == '2'
+    
+    query = await prompt_user("\nEnter search terms: ")
     
     print("\nFilter options:")
     print("1. Videos only")
@@ -582,7 +606,8 @@ async def advanced_search(yt):
             published_after=published_after,
             published_before=published_before,
             duration_filter=duration_filter,
-            max_results=50
+            max_results=50,
+            light_mode=light_mode
         )
         
         if not results:
@@ -593,21 +618,29 @@ async def advanced_search(yt):
         for idx, item in enumerate(results, 1):
             if item['type'] == 'video':
                 print(f"\n{idx}. [VIDEO] {item['title']}")
-                print(f"   Duration: {item['duration']}")
-                print(f"   Views: {item['view_count']:,}")
+                if not light_mode:
+                    print(f"   Duration: {item['duration']}")
+                    print(f"   Views: {item['view_count']:,}")
                 print(f"   Channel: {item['channel_title']}")
                 print(f"   Published: {item['published_at']}")
                 print(f"   ID: {item['id']}")
             elif item['type'] == 'playlist':
                 print(f"\n{idx}. [PLAYLIST] {item['title']}")
                 print(f"   Channel: {item['channel_title']}")
-                print(f"   Videos: {item['video_count']}")
-                if 'earliest_video' in item:
-                    print(f"   Date range: {item['earliest_video']} to {item['latest_video']}")
+                if not light_mode:
+                    print(f"   Videos: {item['video_count']}")
+                    if 'earliest_video' in item:
+                        print(f"   Date range: {item['earliest_video']} to {item['latest_video']}")
                 print(f"   ID: {item['id']}")
             elif item['type'] == 'channel':
                 print(f"\n{idx}. [CHANNEL] {item['title']}")
                 print(f"   ID: {item['id']}")
+        
+        # Show quota used by this operation
+        final_status = yt.get_quota_status()
+        quota_used = final_status['used'] - status['used']
+        print(f"\nThis search used {quota_used} quota points")
+        print(f"Remaining quota: {final_status['remaining']}/{final_status['total']} points")
     except Exception as e:
         print(f"Error performing search: {e}")
 

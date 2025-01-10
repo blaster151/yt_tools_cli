@@ -8,12 +8,18 @@ import os
 
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 
+class QuotaConfirmationError(Exception):
+    """Raised when user declines a high-quota operation."""
+    pass
+
 class YouTubeTools:
     def __init__(self):
         # Initialize YouTube API client and downloader
         self.youtube = self._authenticate()
         self.downloader = self._setup_downloader()
-
+        self.session_quota_used = 0
+        self.DAILY_QUOTA = 10000
+        
     def _authenticate(self):
         # Try to load existing credentials from token.json
         creds = None
@@ -268,11 +274,44 @@ class YouTubeTools:
         
         return int(isodate.parse_duration(duration).total_seconds() / 60)
 
+    def _track_quota(self, points, operation_name="API call"):
+        self.session_quota_used += points
+        remaining = self.DAILY_QUOTA - self.session_quota_used
+        
+        if points > 100:
+            print(f"\nHigh-quota operation: {operation_name} will use {points} points")
+            confirm = input("Continue? (y/n): ").lower()
+            if confirm != 'y':
+                raise QuotaConfirmationError("Operation cancelled by user")
+                
+        if remaining < 1000:
+            print(f"\n⚠️ Warning: Used {self.session_quota_used} points in this session")
+            
+    def get_quota_status(self):
+        remaining = self.DAILY_QUOTA - self.session_quota_used
+        return {
+            'used': self.session_quota_used,
+            'remaining': remaining,
+            'total': self.DAILY_QUOTA,
+            'percent_used': (self.session_quota_used / self.DAILY_QUOTA) * 100
+        }
+        
     async def advanced_search(self, query, resource_type=None, order='relevance',
                             channel_id=None, published_after=None, published_before=None,
-                            duration_filter=None, max_results=50):
-        """Performs an advanced YouTube search with multiple filters."""
+                            duration_filter=None, max_results=50, light_mode=False):
+        """Performs an advanced YouTube search with quota-aware operations."""
         try:
+            # Estimate initial quota cost
+            base_cost = 100  # Search operation
+            estimated_cost = base_cost
+            
+            if not light_mode:
+                # Estimate additional costs based on expected results
+                estimated_details_cost = max_results  # 1 point per item details
+                estimated_cost += estimated_details_cost
+                
+            self._track_quota(estimated_cost, "Advanced search")
+            
             min_duration, max_duration = self._parse_duration_filter(duration_filter)
             
             # Initial search with maximum results since we'll filter some out
@@ -307,8 +346,13 @@ class YouTubeTools:
                     'published_at': item['snippet']['publishedAt']
                 }
                 
+                if light_mode:
+                    results.append(result)
+                    continue
+                    
                 # Get additional details based on type
                 if result['type'] == 'video':
+                    self._track_quota(1, "Video details")
                     video_response = self.youtube.videos().list(
                         part='contentDetails,statistics',
                         id=result['id']
@@ -333,6 +377,7 @@ class YouTubeTools:
                         results.append(result)
                         
                 elif result['type'] == 'playlist':
+                    self._track_quota(1, "Playlist details")
                     try:
                         # Get basic playlist info
                         playlist_response = self.youtube.playlists().list(
@@ -383,6 +428,9 @@ class YouTubeTools:
                 
             return results
             
+        except QuotaConfirmationError:
+            print("\nOperation cancelled to preserve quota")
+            return None
         except Exception as e:
             print(f"Error in advanced search: {e}")
             return None
