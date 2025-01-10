@@ -601,6 +601,9 @@ async def advanced_search(yt):
             elif item['type'] == 'playlist':
                 print(f"\n{idx}. [PLAYLIST] {item['title']}")
                 print(f"   Channel: {item['channel_title']}")
+                print(f"   Videos: {item['video_count']}")
+                if 'earliest_video' in item:
+                    print(f"   Date range: {item['earliest_video']} to {item['latest_video']}")
                 print(f"   ID: {item['id']}")
             elif item['type'] == 'channel':
                 print(f"\n{idx}. [CHANNEL] {item['title']}")

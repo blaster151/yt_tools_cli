@@ -332,8 +332,50 @@ class YouTubeTools:
                         })
                         results.append(result)
                         
-                elif result['type'] in ['playlist', 'channel']:
-                    # ... (existing playlist/channel handling) ...
+                elif result['type'] == 'playlist':
+                    try:
+                        # Get basic playlist info
+                        playlist_response = self.youtube.playlists().list(
+                            part='contentDetails',
+                            id=result['id']
+                        ).execute()
+                        
+                        if playlist_response['items']:
+                            result['video_count'] = playlist_response['items'][0]['contentDetails']['itemCount']
+                            
+                            # Get videos in playlist to determine date range
+                            videos = []
+                            next_page_token = None
+                            
+                            while True:
+                                playlist_items = self.youtube.playlistItems().list(
+                                    part='snippet',
+                                    playlistId=result['id'],
+                                    maxResults=50,
+                                    pageToken=next_page_token
+                                ).execute()
+                                
+                                for video in playlist_items['items']:
+                                    published = video['snippet']['publishedAt']
+                                    videos.append(published)
+                                
+                                next_page_token = playlist_items.get('nextPageToken')
+                                if not next_page_token:
+                                    break
+                            
+                            if videos:
+                                videos.sort()
+                                result['earliest_video'] = videos[0][:10]  # YYYY-MM-DD
+                                result['latest_video'] = videos[-1][:10]  # YYYY-MM-DD
+                            
+                            results.append(result)
+                            
+                    except Exception as e:
+                        print(f"Error fetching playlist details: {e}")
+                        continue
+                        
+                elif result['type'] == 'channel':
+                    # ... (channel handling remains the same) ...
                     results.append(result)
                     
                 if len(results) >= max_results:
