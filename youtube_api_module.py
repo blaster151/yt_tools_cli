@@ -78,6 +78,12 @@ class YouTubeTools:
         }
         return yt_dlp.YoutubeDL(ydl_opts)
 
+    def extract_playlist_id(self, url_or_id):
+        """Extract playlist ID from various YouTube URL formats or return the ID if already clean."""
+        if 'list=' in url_or_id:
+            return url_or_id.split('list=')[1].split('&')[0]
+        return url_or_id
+
     async def get_playlist_items(self, playlist_id, channel_id=None):
         # Handles YouTube's pagination system (max 50 items per request)
         items = []
@@ -85,9 +91,10 @@ class YouTubeTools:
         
         while True:
             # Fetch batch of up to 50 items
+            clean_id = self.extract_playlist_id(playlist_id)
             request = self.youtube.playlistItems().list(
                 part='snippet',
-                playlistId=playlist_id,
+                playlistId=clean_id,
                 maxResults=50,
                 pageToken=next_page_token
             )
@@ -111,11 +118,12 @@ class YouTubeTools:
 
     async def add_video_to_playlist(self, playlist_id, video_id):
         # Creates a new playlist item linking the video to the playlist
+        clean_id = self.extract_playlist_id(playlist_id)
         request = self.youtube.playlistItems().insert(
             part='snippet',
             body={
                 'snippet': {
-                    'playlistId': playlist_id,
+                    'playlistId': clean_id,
                     'resourceId': {
                         'kind': 'youtube#video',
                         'videoId': video_id
@@ -203,8 +211,9 @@ class YouTubeTools:
     async def delete_playlist(self, playlist_id):
         """Deletes a playlist owned by the authenticated user."""
         try:
+            clean_id = self.extract_playlist_id(playlist_id)
             request = self.youtube.playlists().delete(
-                id=playlist_id
+                id=clean_id
             )
             request.execute()
             return True
@@ -230,11 +239,12 @@ class YouTubeTools:
             print(f"Error creating playlist: {e}")
             return None
 
-    async def remove_video_from_playlist(self, playlist_item_id):
-        """Removes a video from a playlist using the playlist item ID."""
+    async def remove_video_from_playlist(self, playlist_id, item_id):
+        """Remove a video from a playlist."""
         try:
+            clean_id = self.extract_playlist_id(playlist_id)
             request = self.youtube.playlistItems().delete(
-                id=playlist_item_id
+                id=item_id
             )
             request.execute()
             return True

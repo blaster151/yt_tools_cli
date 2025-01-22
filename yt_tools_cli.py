@@ -7,9 +7,10 @@ async def prompt_user(message):
 
 async def get_playlist_details(yt, playlist_id):
     try:
+        clean_id = yt.extract_playlist_id(playlist_id)
         request = yt.youtube.playlists().list(
             part='snippet',
-            id=playlist_id
+            id=clean_id
         )
         response = request.execute()
         if response['items']:
@@ -21,9 +22,10 @@ async def get_playlist_details(yt, playlist_id):
 
 async def validate_playlist(yt, playlist_id):
     try:
+        clean_id = yt.extract_playlist_id(playlist_id)
         request = yt.youtube.playlists().list(
             part='snippet',
-            id=playlist_id
+            id=clean_id
         )
         response = request.execute()
         if response['items']:
