@@ -86,14 +86,30 @@ async def combine_playlists(yt):
     print("\n=== YouTube Playlist Combiner ===")
     
     # Get destination playlist
-    dest_playlist_id = await prompt_user('Enter destination playlist ID: ')
-    dest_details = await get_playlist_details(yt, dest_playlist_id)
-    
-    if not dest_details:
-        print('Error: Could not find destination playlist')
-        return
-    
-    print(f'Found destination playlist: "{dest_details["snippet"]["title"]}"')
+    while True:
+        await show_playlist_history(yt)
+        dest_playlist_id = await prompt_user('\nEnter destination playlist number, ID, or URL: ')
+        
+        if not dest_playlist_id:
+            continue
+            
+        # Check if input is a number referring to history
+        try:
+            idx = int(dest_playlist_id)
+            if 1 <= idx <= len(yt.playlist_history):
+                dest_playlist_id = yt.playlist_history[idx-1]['id']
+        except ValueError:
+            pass  # Not a number, treat as regular input
+            
+        validation = await validate_playlist(yt, dest_playlist_id)
+        if validation['valid']:
+            dest_playlist_name = validation['name']
+            print(f'Found destination playlist: "{dest_playlist_name}"')
+            # Add to history
+            yt.add_to_history(dest_playlist_id, dest_playlist_name)
+            break
+        else:
+            print("\nInvalid playlist ID or URL. Please try again.")
     
     # Get source(s)
     source_input = await prompt_user('Enter source playlist ID(s) or video ID (comma-separated for multiple sources): ')
@@ -646,6 +662,16 @@ async def advanced_search(yt):
     except Exception as e:
         print(f"Error performing search: {e}")
 
+async def show_playlist_history(yt):
+    """Display numbered list of recent destination playlists"""
+    if not yt.playlist_history:
+        print("\nNo recent destination playlists.")
+        return
+    
+    print("\nRecent destination playlists:")
+    for i, playlist in enumerate(yt.playlist_history, 1):
+        print(f"{i}. {playlist['title']} ({playlist['id']})")
+
 async def main():
     yt = YouTubeTools()
     
@@ -655,9 +681,10 @@ async def main():
         print("2. Download Playlist")
         print("3. List My Playlists")
         print("4. Advanced Search")
-        print("5. Exit")
+        print("5. Show Playlist History")
+        print("6. Exit")
         
-        choice = await prompt_user("\nEnter your choice (1-5): ")
+        choice = await prompt_user("\nEnter your choice (1-6): ")
         
         if choice == '1':
             await combine_playlists(yt)
@@ -668,6 +695,10 @@ async def main():
         elif choice == '4':
             await advanced_search(yt)
         elif choice == '5':
+            await show_playlist_history(yt)
+            await prompt_user("\nPress Enter to continue...")
+            continue
+        elif choice == '6':
             print("Goodbye!")
             break
         else:

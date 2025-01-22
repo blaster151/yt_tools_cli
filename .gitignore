@@ -3,3 +3,4 @@ credentials.json     # YouTube API credentials
 __pycache__/
 *.pyc
 .env
+playlist_history.json

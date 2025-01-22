@@ -5,6 +5,7 @@ from googleapiclient.discovery import build
 import yt_dlp
 import json
 import os
+from datetime import datetime
 
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 
@@ -19,6 +20,8 @@ class YouTubeTools:
         self.downloader = self._setup_downloader()
         self.session_quota_used = 0
         self.DAILY_QUOTA = 10000
+        self.history_file = 'playlist_history.json'
+        self._load_history()
         
     def _authenticate(self):
         # Try to load existing credentials from token.json
@@ -444,3 +447,40 @@ class YouTubeTools:
         except Exception as e:
             print(f"Error in advanced search: {e}")
             return None
+
+    def _load_history(self):
+        """Load playlist history from file"""
+        try:
+            if os.path.exists(self.history_file):
+                with open(self.history_file, 'r') as f:
+                    self.playlist_history = json.load(f)
+            else:
+                self.playlist_history = []
+        except:
+            self.playlist_history = []
+
+    def _save_history(self):
+        """Save playlist history to file"""
+        try:
+            with open(self.history_file, 'w') as f:
+                json.dump(self.playlist_history, f)
+            print(f"Debug: Saved {len(self.playlist_history)} items to history")  # Temporary debug line
+        except Exception as e:
+            print(f"Debug: Failed to save history: {e}")  # Temporary debug line
+            pass
+
+    def add_to_history(self, playlist_id, title):
+        """Add playlist to history, maintaining uniqueness and limiting size"""
+        clean_id = self.extract_playlist_id(playlist_id)
+        print(f"Debug: Adding playlist to history: {title} ({clean_id})")  # Temporary debug line
+        # Remove if already exists
+        self.playlist_history = [p for p in self.playlist_history if p['id'] != clean_id]
+        # Add to front of list
+        self.playlist_history.insert(0, {
+            'id': clean_id,
+            'title': title,
+            'last_used': datetime.now().isoformat()
+        })
+        # Keep only last 10 items
+        self.playlist_history = self.playlist_history[:10]
+        self._save_history()
