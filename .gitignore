@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .env
 playlist_history.json
+token.json
