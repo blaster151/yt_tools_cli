@@ -27,16 +27,31 @@ class YouTubeTools:
         # Try to load existing credentials from token.json
         creds = None
         if os.path.exists('token.json'):
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            try:
+                creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            except Exception:
+                # If token file is corrupted or invalid, remove it
+                os.remove('token.json')
+                creds = None
         
         # If no valid credentials found, either refresh or create new ones
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except Exception:
+                    # If refresh fails, remove token and start fresh auth flow
+                    print("Token expired. Starting new authorization flow...")
+                    if os.path.exists('token.json'):
+                        os.remove('token.json')
+                    # Start fresh OAuth flow
+                    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                    creds = flow.run_local_server(port=0)
             else:
-                # Start OAuth flow using credentials.json (must be obtained from Google Cloud Console)
+                # Start OAuth flow using credentials.json
                 flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
                 creds = flow.run_local_server(port=0)
+            
             # Save the credentials for future use
             with open('token.json', 'w') as token:
                 token.write(creds.to_json())
