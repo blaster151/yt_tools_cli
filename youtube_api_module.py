@@ -2,6 +2,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from langdetect import detect
+from langdetect.lang_detect_exception import LangDetectException
 import yt_dlp
 import json
 import os
@@ -72,16 +74,11 @@ class SearchModel:
             self.persistent_exclusions.add(phrase.lower())
         else:
             self.session_exclusions.add(phrase.lower())
-        
-        # Save model after adding exclusion
-        if persistent:
-            self._save_model(self.game_type)
 
     def remove_exclusion(self, phrase, persistent=False):
         """Remove an exclusion phrase."""
         if persistent:
             self.persistent_exclusions.discard(phrase.lower())
-            self._save_model(self.game_type)
         else:
             self.session_exclusions.discard(phrase.lower())
 
@@ -485,7 +482,7 @@ class YouTubeTools:
             'percent_used': (self.session_quota_used / self.DAILY_QUOTA) * 100
         }
         
-    async def advanced_search(self, query, resource_type='video', order='relevance', duration_filter=None, max_results=5, light_mode=True):
+    async def advanced_search(self, query, resource_type='video', order='relevance', duration_filter=None, max_results=5, light_mode=True, relevanceLanguage=None):
         try:
             # Estimate initial quota cost
             base_cost = 100  # Search operation
@@ -505,10 +502,13 @@ class YouTubeTools:
                 'maxResults': max_results,  # Only request what we need
                 'type': resource_type if resource_type else 'video,playlist',
                 'order': order,
-                'part': 'snippet',
-                'relevanceLanguage': 'en'  # Add language preference for better results
+                'part': 'snippet'
             }
             
+            # Add language preference if specified
+            if relevanceLanguage:
+                params['relevanceLanguage'] = relevanceLanguage
+
             print(f"\nDebug: YouTube API search parameters:")
             print(f"Query: {params['q']}")
             print(f"Type: {params['type']}")
@@ -1100,7 +1100,8 @@ class YouTubeTools:
         final_query = ' '.join(search_parts)
         print(f"\nUsing refined query: {final_query}")
         
-        results = await self.advanced_search(final_query, max_results=20)
+        # Reduced from 20 to 15 to be more quota-conscious
+        results = await self.advanced_search(final_query, max_results=15, relevanceLanguage='en')
         
         if not results:
             print("No results found")
@@ -1109,7 +1110,66 @@ class YouTubeTools:
         # Filter out noise channels post-query
         results = [r for r in results if r['channel_title'] not in model.noise_channels]
         
-        print("\nResults with scoring breakdown:")
+        # Language mapping for readable output
+        LANG_NAMES = {
+            'es': 'Spanish',
+            'fr': 'French',
+            'de': 'German',
+            'it': 'Italian',
+            'ru': 'Russian',
+            'zh': 'Chinese',
+            'ja': 'Japanese',
+            'ko': 'Korean',
+            'pt': 'Portuguese',
+            'hi': 'Hindi',
+            'ar': 'Arabic'
+        }
+        
+        # Additional language filtering with improved feedback
+        filtered_results = []
+        print("\nLanguage filtering results:")
+        for r in results:
+            title = r['title']
+            description = r.get('description', '')
+            
+            # Skip if title contains non-Latin characters (quick check for obvious non-English)
+            if any(ord(c) > 127 for c in title):
+                print(f"⚠️  Filtered - Non-Latin characters: {title}")
+                continue
+            
+            # Try language detection on title and description
+            try:
+                # Check title language
+                title_lang = detect(title)
+                if title_lang != 'en':
+                    lang_name = LANG_NAMES.get(title_lang, title_lang.upper())
+                    print(f"⚠️  Filtered - {lang_name} title: {title}")
+                    continue
+                
+                # If description exists and is long enough, check its language too
+                if len(description) > 50:
+                    desc_lang = detect(description)
+                    if desc_lang != 'en':
+                        lang_name = LANG_NAMES.get(desc_lang, desc_lang.upper())
+                        print(f"⚠️  Filtered - {lang_name} description: {title}")
+                        continue
+                
+                filtered_results.append(r)
+                
+            except LangDetectException:
+                # If language detection fails, fall back to checking for common non-English markers
+                if any(marker in title.lower() for marker in ['español', 'français', 'deutsch', 'italiano', 'русский', '中文', '日本語']):
+                    print(f"⚠️  Filtered - Language marker in title: {title}")
+                    continue
+                filtered_results.append(r)
+        
+        results = filtered_results
+        
+        if not results:
+            print("\nNo results remained after filtering")
+            return
+            
+        print(f"\nShowing {len(results)} results after filtering:")
         for i, result in enumerate(results, 1):
             print(f"\n{i}. {result['title']}")
             print(f"   Channel: {result['channel_title']}")
@@ -1185,8 +1245,12 @@ class YouTubeTools:
             formatted_query = ' '.join(search_parts)
             print(f"\nDebug: Trying search pattern: {formatted_query}")
             
-            # Request more results since we'll be filtering some out
-            results = await self.advanced_search(formatted_query, max_results=15)
+            # Reduced from 25 to 20 results per query to be more quota-conscious
+            results = await self.advanced_search(
+                formatted_query, 
+                max_results=20,
+                relevanceLanguage='en'  # Filter for English content at API level
+            )
             
             if not results:
                 print("Debug: No results found for this pattern")
@@ -1194,8 +1258,43 @@ class YouTubeTools:
             
             print(f"Debug: Found {len(results)} initial results")
             
-            # Filter out noise channels
-            filtered_results = [r for r in results if r['channel_title'] not in model.noise_channels]
+            # Filter out noise channels and non-English content
+            filtered_results = []
+            for r in results:
+                # Skip if from noise channel
+                if r['channel_title'] in model.noise_channels:
+                    continue
+                
+                title = r['title']
+                description = r.get('description', '')
+                
+                # Skip if title contains non-Latin characters (quick check for obvious non-English)
+                if any(ord(c) > 127 for c in title):
+                    print(f"Debug: Filtered out non-Latin title: {title}")
+                    continue
+                
+                # Try language detection on title and description
+                try:
+                    # Check title language
+                    title_lang = detect(title)
+                    if title_lang != 'en':
+                        print(f"Debug: Filtered out non-English title ({title_lang}): {title}")
+                        continue
+                    
+                    # If description exists and is long enough, check its language too
+                    if len(description) > 50:  # Only check substantial descriptions
+                        desc_lang = detect(description)
+                        if desc_lang != 'en':
+                            print(f"Debug: Filtered out due to non-English description ({desc_lang})")
+                            continue
+                except LangDetectException:
+                    # If language detection fails, fall back to checking for common non-English markers
+                    if any(marker in title.lower() for marker in ['español', 'français', 'deutsch', 'italiano', 'русский', '中文', '日本語']):
+                        print(f"Debug: Filtered out based on language markers: {title}")
+                        continue
+                
+                filtered_results.append(r)
+                
             print(f"Debug: {len(filtered_results)} results remained after filtering")
             
             # Score and store results
@@ -1215,8 +1314,8 @@ class YouTubeTools:
         # Remove duplicates (same video from different queries)
         unique_results = {v[0]['id']: v for v in all_results}.values()
         
-        # Sort by score and take top 10
-        final_results = sorted(unique_results, key=lambda x: x[1], reverse=True)[:10]
+        # Sort by score and take top 15 (reduced from 20)
+        final_results = sorted(unique_results, key=lambda x: x[1], reverse=True)[:15]
         print(f"\nDebug: Final result count: {len(final_results)}")
         
         return final_results
@@ -1395,6 +1494,8 @@ class YouTubeTools:
                         else:
                             model.add_noise_channel(channel)
                             print(f"Added noise channel: {channel}")
+                        # Save after modifying channels
+                        self._save_model(game_type)
                     else:
                         print("Invalid number")
                 except ValueError:
@@ -1413,6 +1514,8 @@ class YouTubeTools:
                 if phrase:
                     model.add_exclusion(phrase, persistent=True)
                     print(f"Added persistent exclusion: {phrase}")
+                    # Save after adding persistent exclusion
+                    self._save_model(game_type)
                     
             elif choice == '6':
                 print("\nCurrent exclusions:")
@@ -1423,6 +1526,9 @@ class YouTubeTools:
                 if phrase in model.get_all_exclusions():
                     model.remove_exclusion(phrase, persistent=is_persistent)
                     print(f"Removed {'persistent' if is_persistent else 'session'} exclusion: {phrase}")
+                    if is_persistent:
+                        # Save after removing persistent exclusion
+                        self._save_model(game_type)
                     
             elif choice == '7':
                 print("\nCurrent Model State:")

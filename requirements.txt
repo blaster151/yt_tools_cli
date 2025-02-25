@@ -1,0 +1,6 @@
+google-auth-oauthlib>=0.4.6
+google-auth>=2.6.0
+google-api-python-client>=2.0.0
+yt-dlp>=2023.3.4
+langdetect>=1.0.9
+isodate>=0.6.1 
