@@ -672,6 +672,35 @@ async def show_playlist_history(yt):
     for i, playlist in enumerate(yt.playlist_history, 1):
         print(f"{i}. {playlist['title']} ({playlist['id']})")
 
+async def generate_gameplay_playlist(yt):
+    # Use the improved implementation from YouTubeTools class
+    await yt.generate_gameplay_playlist()
+
+async def train_search_model(yt):
+    """Training mode for improving search results."""
+    print("\n=== Search Model Training Mode ===")
+    
+    # Get game type
+    print("\nGame type:")
+    print("1. Video Game")
+    print("2. Board Game")
+    
+    game_type = await prompt_user("\nChoose type (1-2): ")
+    if game_type not in ['1', '2']:
+        print("Invalid choice.")
+        return
+        
+    game_type_str = "board" if game_type == '2' else "video"
+    
+    # Get game name
+    game_name = await prompt_user("\nEnter game name: ")
+    if not game_name.strip():
+        print("Game name cannot be empty")
+        return
+
+    # Start training session
+    await yt.training_session(game_name, game_type_str)
+
 async def main():
     yt = YouTubeTools()
     
@@ -682,9 +711,11 @@ async def main():
         print("3. List My Playlists")
         print("4. Advanced Search")
         print("5. Show Playlist History")
-        print("6. Exit")
+        print("6. Generate Gameplay Guide")
+        print("7. Train Search Model")
+        print("8. Exit")
         
-        choice = await prompt_user("\nEnter your choice (1-6): ")
+        choice = await prompt_user("\nEnter your choice (1-8): ")
         
         if choice == '1':
             await combine_playlists(yt)
@@ -696,9 +727,11 @@ async def main():
             await advanced_search(yt)
         elif choice == '5':
             await show_playlist_history(yt)
-            await prompt_user("\nPress Enter to continue...")
-            continue
         elif choice == '6':
+            await generate_gameplay_playlist(yt)
+        elif choice == '7':
+            await train_search_model(yt)
+        elif choice == '8':
             print("Goodbye!")
             break
         else:

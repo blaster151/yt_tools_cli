@@ -1,0 +1,33 @@
+{
+  "game_type": "board",
+  "persistent_exclusions": [
+    "gift list",
+    "valorant"
+  ],
+  "trusted_channels": [],
+  "noise_channels": [],
+  "scoring_weights": {
+    "title_match": 20,
+    "view_count": 10,
+    "like_ratio": 15,
+    "trusted_channel": 15,
+    "noise_channel": -10,
+    "duration_match": 10,
+    "context_match": 15,
+    "recency": 10
+  },
+  "duration_ranges": {
+    "how_to_play": {
+      "min": 5,
+      "max": 40
+    },
+    "review": {
+      "min": 10,
+      "max": 30
+    },
+    "playthrough": {
+      "min": 30,
+      "max": null
+    }
+  }
+}
